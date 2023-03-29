@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv'
 dotenv.config();
 import express from 'express';
 import mongoose from 'mongoose';
-import encrypt from 'mongoose-encryption';
+import md5 from 'md5';
 
 const app = express();
 const { Schema } = mongoose;
@@ -13,8 +13,6 @@ const userSchema = new Schema({
     email: String,
     password: String
 });
-
-userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ['password']});
 
 const User = mongoose.model("User", userSchema);
 
@@ -33,8 +31,9 @@ app.route("/login")
     })
     .post(async (req, res) => {
         const email = req.body.username,
-        password = req.body.password,
+        password = md5(req.body.password),
         user = await User.findOne({email: email}).exec();
+        
         if(user && user.password === password) {
             res.render('secrets');
         } else {
@@ -49,7 +48,7 @@ app.route("/register")
     .post(async (req, res) => {
         const user = new User({
             email: req.body.username,
-            password: req.body.password
+            password: md5(req.body.password)
         });
         await user.save()
             .then(() => {
