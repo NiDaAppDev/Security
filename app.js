@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import session from 'express-session';
 import passport from 'passport';
 import passportLocalMongoose from 'passport-local-mongoose';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import findOrCreate from 'mongoose-findorcreate';
 
 const app = express();
 const { Schema } = mongoose;
@@ -23,18 +25,44 @@ app.use(passport.session());
 mongoose.connect("mongodb://localhost:27017/usersDB");
 
 const userSchema = new Schema({
-    email: String,
-    password: String
+    username: String,
+    password: String,
+    googleId: String
 });
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 const User = mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
 
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+passport.serializeUser(function (user, done) {
+    done(null, user.id);
+});
+passport.deserializeUser(async function (id, done) {
+    let err, user;
+    try {
+        user = await User.findById(id).exec();
+    }
+    catch (e) {
+        err = e;
+    }
+    console.log(user);
+    done(err, user);
+});
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets"
+},
+    function (accessToken, refreshToken, profile, cb) {
+        User.findOrCreate({ username: profile.displayName, googleId: profile.id }, function (err, user) {
+            return cb(err, user);
+        });
+    }
+));
 
 app.route("/")
     .get((req, res) => {
@@ -75,13 +103,20 @@ app.route("/register")
             passport.authenticate("local")(req, res, () => {
                 res.redirect("/secrets");
             });
+
         });
     });
+
+app.route("/auth/google")
+    .get(passport.authenticate("google", { scope: ["profile"] }));
+
+app.route("/auth/google/secrets")
+    .get(passport.authenticate("google", { failureRedirect: "/login" }), (req, res) => res.redirect("/secrets"));
 
 app.route("/secrets")
     .get((req, res) => {
         if (req.isAuthenticated()) {
-            res.render('secrets');
+            res.render("secrets");
             return;
         }
         res.redirect("/login");
