@@ -27,7 +27,8 @@ mongoose.connect("mongodb://localhost:27017/usersDB");
 const userSchema = new Schema({
     username: String,
     password: String,
-    googleId: String
+    googleId: String,
+    secret: String
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -113,9 +114,25 @@ app.route("/auth/google/secrets")
     .get(passport.authenticate("google", { failureRedirect: "/login" }), (req, res) => res.redirect("/secrets"));
 
 app.route("/secrets")
+    .get(async (req, res) => {
+        const users = await User.find({secret: {$ne: null}}).exec();
+        res.render("secrets", {users: users});
+    });
+
+app.route("/submit")
     .get((req, res) => {
         if (req.isAuthenticated()) {
-            res.render("secrets");
+            res.render("submit");
+            return;
+        }
+        res.redirect("/login");
+    })
+    .post(async (req, res) => {
+        if(req.isAuthenticated()){
+            const submittedSecret = req.body.secret;
+            const user = await User.findById(req.user._id).exec();
+            user.secret = submittedSecret;
+            await user.save().then(() => res.redirect("/secrets"));
             return;
         }
         res.redirect("/login");
